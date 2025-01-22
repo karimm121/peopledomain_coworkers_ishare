@@ -1,0 +1,427 @@
+name: CFs Deployment
+on:
+  push:
+    branches:
+      - develop
+
+  pull_request:
+    branches:
+      - develop
+      - test
+      - main
+
+permissions:
+  contents: read
+
+env:
+  # Environment specific values to be fetched from git Environment secrets
+  CF_REGION: '${{ secrets.CF_REGION }}'
+  PROJECT_ID: '${{ secrets.PROJECT_ID }}'
+  SA_EMAIL: '${{ secrets.SA_EMAIL }}'
+  WORKLOAD_IDENTITY_POOL: '${{ secrets.WORKLOAD_IDENTITY_POOL }}'
+  KMS_KEY_NAME: '${{ secrets.KMS_KEY_NAME }}'
+  DOCKER_REPOSITORY: '${{ secrets.DOCKER_REPOSITORY }}'
+  FOUNT_STORAGE_BUCKET: '${{ secrets.FOUNT_STORAGE_BUCKET }}'
+  ISHARE_ENPS_VARS: '${{ secrets.ISHARE_ENPS_VARS }}'
+  ISHARE_SFTP_NEW_VARS: '${{ secrets.ISHARE_SFTP_NEW_VARS }}'
+  SPROUT_VPC_CONNECTOR: '${{ secrets.SPROUT_VPC_CONNECTOR }}'
+  SPROUT_VPC_CONNECTOR_EGRESS_SETTINGS: '${{ secrets.SPROUT_VPC_CONNECTOR_EGRESS_SETTINGS }}'
+  ISHARE_CONSUMER_LOGIC_VARS: '${{ secrets.ISHARE_CONSUMER_LOGIC_VARS }}'
+  ISHARE_RECORD_STATUS: '${{ secrets.ISHARE_RECORD_STATUS }}'
+  ISHARE_ENPS_RESULTS_BLOB: '${{ secrets.ISHARE_ENPS_RESULTS_BLOB }}'
+  ISHARE_GET_MAPPING_VARS: '${{ secrets.ISHARE_GET_MAPPING_VARS }}'
+  ISHARE_SPROUT_SFTP: '${{ secrets.ISHARE_SPROUT_SFTP }}'
+  ISHARE_ENPS_WEEKLY_VARS: '${{ secrets.ISHARE_ENPS_WEEKLY_VARS }}'
+  ISHARE_GET_PAOM_DATA_VARS: '${{ secrets.ISHARE_GET_PAOM_DATA_VARS }}'
+  ISHARE_READ_EXCEL_SAVE_BQ_VARS: '${{ secrets.ISHARE_READ_EXCEL_SAVE_BQ_VARS }}'
+  ISHARE_SAVE_CSV_VARS: '${{ secrets.ISHARE_SAVE_CSV_VARS }}'
+  FOUNT_EXTRACT_PERSON_INFO_BUCKET: '${{ secrets.FOUNT_EXTRACT_PERSON_INFO_BUCKET }}'
+  FOUNT_FREETEXT_SCRUBBING_BUCKET: '${{ secrets.FOUNT_FREETEXT_SCRUBBING_BUCKET }}'
+  FOUNT_MASK_PROFANITY_BUCKET: '${{ secrets.FOUNT_MASK_PROFANITY_BUCKET }}'
+
+jobs:
+  init:
+    name: Initialize Environment
+    runs-on: ubuntu-latest
+    outputs:
+      workflow_env: ${{ steps.set_environment.outputs.workflow_env }}
+    steps:
+      - id: 'set_environment'
+        name: Set Environment
+        run: |
+            if [[ "${{github.base_ref}}" == "main" || "${{github.ref}}" == "refs/heads/main" ]]; then
+              echo "workflow_env=main" >> $GITHUB_OUTPUT;
+            elif [[ "${{github.base_ref}}" == "test" || "${{github.ref}}" == "refs/heads/test" ]]; then
+              echo "workflow_env=test" >> $GITHUB_OUTPUT;
+            elif [[ "${{github.base_ref}}" == "develop" || "${{github.ref}}" == "refs/heads/develop" ]]; then
+              echo "workflow_env=develop" >> $GITHUB_OUTPUT;
+            else
+              echo "workflow_env=dev" >> $GITHUB_OUTPUT;
+            fi;
+
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          pwd
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt      
+      
+      - name: Run Tests
+        run: |
+          cd tests
+          for dir in */; do
+            echo "Running tests in $dir"
+            pytest "$dir"  # Run pytest in each subdirectory
+
+  cloud_functions_deploy:
+    name: Deploy Google Cloud Functions
+    runs-on: ubuntu-latest
+    needs: init
+    environment: ${{ needs.init.outputs.workflow_env }}
+    permissions:
+      contents: "read"
+      id-token: "write"
+      
+    steps:
+    # checkout to our repository so we have access to the source code
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+           fetch-depth: 0
+
+      - name: Branch name
+        run: echo running on branch ${GITHUB_REF##*/}
+        
+      - name: Get changed files
+        id: modified-files
+        uses: tj-actions/changed-files@v41
+        with:
+          format: newline-delimited
+      
+      - name: List modified files excluding tests
+        run: |
+          echo "Modified files (excluding tests):"
+          filtered_files=""
+          for file in ${{ steps.modified-files.outputs.all_modified_files }}; do
+            if [[ ! "$file" == tests/* ]]; then
+              filtered_files+="$file"$'\n'
+              echo "$file"
+            fi
+          done
+          echo "filtered_files_without_tests=${filtered_files//$'\n'/,}" >> $GITHUB_ENV
+
+      - name: Set deployment environment status
+        id: environment_check
+        run: |
+              if [[ "${{ github.event.pull_request.base.ref }}" == "develop" ]]; then
+                echo "PR is targeting the development environment"
+                echo "::set-output name=environment::valid_deployment"  
+              elif [[ "${{ github.event.pull_request.base.ref }}" == "test" && "${{ github.event.pull_request.head.ref }}" == "develop" ]]; then
+                echo "PR is targeting the test environment"
+                echo "::set-output name=environment::valid_deployment"
+              elif [[ "${{ github.event.pull_request.base.ref }}" == "main" && "${{ github.event.pull_request.head.ref }}" == "test" ]]; then
+                echo "PR is targeting the main environment"
+                echo "::set-output name=environment::valid_deployment"
+              else
+                echo "PR is targeting another environment"
+                echo "::set-output name=environment::other"
+              fi
+        
+      - name: Echo Environment
+        run: |
+            environment_status="${{ steps.environment_check.outputs.environment }}"
+            echo "Pull Request is targeting the $environment_status environment"
+      
+      - id: 'auth'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          workload_identity_provider: '${{ env.WORKLOAD_IDENTITY_POOL }}'
+          service_account: '${{ env.SA_EMAIL }}'
+          
+      # the actual deployment to google cloud functions
+      - name: fount_mask_profanity
+        if: contains(env.filtered_files_without_tests, 'fount_mask_profanity/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+          name: fount_mask_profanity
+          project_id: '${{ env.PROJECT_ID }}'
+          region: ${{ env.CF_REGION }}
+          source_dir: ./fount_mask_profanity
+          service_account_email: ${{ env.SA_EMAIL }}
+          entry_point: main
+          runtime: python310
+          trigger_event: google.storage.object.finalize
+          trigger_resource: 'projects/${{ env.PROJECT_ID }}/buckets/${{ env.FOUNT_FREETEXT_SCRUBBING_BUCKET }}'
+          kms_key_name: ${{ env.KMS_KEY_NAME }}
+          docker_repository: ${{ env.DOCKER_REPOSITORY }}
+          timeout: 540
+          max_instances: 50
+          memory_mb: 4096
+
+      # - name: fount-api-data-to-bq
+      #   if: contains(env.filtered_files_without_tests, 'fount-api-data-to-bq/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+      #   uses: google-github-actions/deploy-cloud-functions@v1
+      #   with:
+      #     name: fount-api-data-to-bq
+      #     project_id: '${{ env.PROJECT_ID }}'
+      #     region: ${{ env.CF_REGION }}
+      #     source_dir: ./fount-api-data-to-bq
+      #     service_account_email: ${{ env.SA_EMAIL }}
+      #     entry_point: main
+      #     runtime: python310
+      #     kms_key_name: ${{ env.KMS_KEY_NAME }}
+      #     docker_repository: ${{ env.DOCKER_REPOSITORY }}
+      #     timeout: 300
+      #     max_instances: 10
+      #     memory_mb: 1024
+
+      # - name: fount-extract-person-info
+      #   if: contains(env.filtered_files_without_tests, 'fount-extract-person-info/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+      #   uses: google-github-actions/deploy-cloud-functions@v1
+      #   with:
+      #     name: fount-extract-person-info
+      #     project_id: '${{ env.PROJECT_ID }}'
+      #     region: ${{ env.CF_REGION }}
+      #     source_dir: ./fount-extract-person-info
+      #     service_account_email: ${{ env.SA_EMAIL }}
+      #     entry_point: main
+      #     runtime: python310
+      #     kms_key_name: ${{ env.KMS_KEY_NAME }}
+      #     docker_repository: ${{ env.DOCKER_REPOSITORY }}
+      #     timeout: 540
+      #     max_instances: 50
+      #     memory_mb: 8192
+
+      - name: fount-freetext-scrubbing
+        if: contains(env.filtered_files_without_tests, 'fount-freetext-scrubbing/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+          name: fount-freetext-scrubbing
+          project_id: '${{ env.PROJECT_ID }}'
+          region: ${{ env.CF_REGION }}
+          source_dir: ./fount-freetext-scrubbing
+          service_account_email: ${{ env.SA_EMAIL }}
+          entry_point: main
+          runtime: python310
+          trigger_event: google.storage.object.finalize
+          trigger_resource: 'projects/${{ env.PROJECT_ID }}/buckets/${{ env.FOUNT_EXTRACT_PERSON_INFO_BUCKET }}'
+          kms_key_name: ${{ env.KMS_KEY_NAME }}
+          docker_repository: ${{ env.DOCKER_REPOSITORY }}
+          timeout: 540
+          max_instances: 20
+          memory_mb: 4096
+
+      - name: fount-get-freetext
+        if: contains(env.filtered_files_without_tests, 'fount-get-freetext/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+         name: fount-get-freetext
+         project_id: '${{ env.PROJECT_ID }}'
+         region: ${{ env.CF_REGION }}
+         source_dir: ./fount-get-freetext
+         service_account_email: ${{ env.SA_EMAIL }}
+         entry_point: main
+         runtime: python310
+         kms_key_name: ${{ env.KMS_KEY_NAME }}
+         docker_repository: ${{ env.DOCKER_REPOSITORY }}
+         timeout: 300
+         max_instances: 10
+         memory_mb: 1024
+
+      - name: fount-send-scrubbed-data
+        if: contains(env.filtered_files_without_tests, 'fount-send-scrubbed-data/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+          name: fount-send-scrubbed-data
+          project_id: '${{ env.PROJECT_ID }}'
+          region: ${{ env.CF_REGION }}
+          source_dir: ./fount-send-scrubbed-data
+          service_account_email: ${{ env.SA_EMAIL }}
+          entry_point: main
+          runtime: python310
+          trigger_event: google.storage.object.finalize
+          trigger_resource: 'projects/${{ env.PROJECT_ID }}/buckets/${{ env.FOUNT_MASK_PROFANITY_BUCKET }}'
+          kms_key_name: ${{ env.KMS_KEY_NAME }}
+          docker_repository: ${{ env.DOCKER_REPOSITORY }}
+          timeout: 540
+          max_instances: 20
+          memory_mb: 4096  
+
+      # - name: get-cowr-data-person-api-v0
+      #   if: contains(env.filtered_files_without_tests, 'get-cowr-data-person-api-v0/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+      #   uses: google-github-actions/deploy-cloud-functions@v1
+      #   with:
+      #    name: get-cowr-data-person-api-v0
+      #    project_id: '${{ env.PROJECT_ID }}'
+      #    region: ${{ env.CF_REGION }}
+      #    source_dir: ./get-cowr-data-person-api-v0
+      #    service_account_email: ${{ env.SA_EMAIL }}
+      #    entry_point: main
+      #    runtime: python310
+      #    #env_vars: ${{ env.ISHARE_CONSUMER_LOGIC_VARS }}
+      #    kms_key_name: ${{ env.KMS_KEY_NAME }}
+      #    docker_repository: ${{ env.DOCKER_REPOSITORY }}
+      #    timeout: 540
+      #    max_instances: 10
+      #    memory_mb: 8192
+
+      - name: get-shp-offboarding-list-bq
+        if: contains(env.filtered_files_without_tests, 'get-shp-offboarding-list-bq/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+          name: get-shp-offboarding-list-bq
+          project_id: '${{ env.PROJECT_ID }}'
+          region: ${{ env.CF_REGION }}
+          source_dir: ./get-shp-offboarding-list-bq
+          service_account_email: ${{ env.SA_EMAIL }}
+          entry_point: main
+          runtime: python310
+          kms_key_name: ${{ env.KMS_KEY_NAME }}
+          docker_repository: ${{ env.DOCKER_REPOSITORY }}
+          timeout: 540
+          max_instances: 10
+          memory_mb: 4096
+
+      # - name: ishare-consumer-logic-v1
+      #   if: contains(env.filtered_files_without_tests, 'ishare-consumer-logic-v1/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+      #   uses: google-github-actions/deploy-cloud-functions@v1
+      #   with:
+      #    name: ishare-consumer-logic-v1
+      #    project_id: '${{ env.PROJECT_ID }}'
+      #    region: ${{ env.CF_REGION }}
+      #    source_dir: ./ishare-consumer-logic-v1
+      #    service_account_email: ${{ env.SA_EMAIL }}
+      #    entry_point: update_paom_data
+      #    runtime: python310
+      #    #env_vars: ${{ env.ISHARE_CONSUMER_LOGIC_VARS }}
+      #    kms_key_name: ${{ env.KMS_KEY_NAME }}
+      #    docker_repository: ${{ env.DOCKER_REPOSITORY }}
+      #    timeout: 500
+      #    max_instances: 10
+      #    memory_mb: 4096
+
+      - name: ishare-create-enps-monthly-file
+        if: contains(env.filtered_files_without_tests, 'ishare-create-enps-monthly-file/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+          name: ishare-create-enps-monthly-file
+          project_id: '${{ env.PROJECT_ID }}'
+          region: ${{ env.CF_REGION }}
+          source_dir: ./ishare-create-enps-monthly-file
+          service_account_email: ${{ env.SA_EMAIL }}
+          entry_point: main
+          runtime: python310
+          kms_key_name: ${{ env.KMS_KEY_NAME }}
+          docker_repository: ${{ env.DOCKER_REPOSITORY }}
+          timeout: 540
+          max_instances: 10
+          memory_mb: 4096
+      
+      - name: ishare-create-enps-weekly-file
+        if: contains(env.filtered_files_without_tests, 'ishare-create-enps-weekly-file/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+          name: ishare-create-enps-weekly-file
+          project_id: '${{ env.PROJECT_ID }}'
+          region: ${{ env.CF_REGION }}
+          source_dir: ./ishare-create-enps-weekly-file
+          service_account_email: ${{ env.SA_EMAIL }}
+          entry_point: main
+          runtime: python310
+          kms_key_name: ${{ env.KMS_KEY_NAME }}
+          docker_repository: ${{ env.DOCKER_REPOSITORY }}
+          timeout: 540
+          max_instances: 10
+          memory_mb: 4096
+
+      - name: ishare-get-mapping-files
+        if: contains(env.filtered_files_without_tests, 'ishare-get-mapping-files/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+          name: ishare-get-mapping-files
+          project_id: '${{ env.PROJECT_ID }}'
+          region: ${{ env.CF_REGION }}
+          source_dir: ./ishare-get-mapping-files
+          service_account_email: ${{ env.SA_EMAIL }}
+          entry_point: main
+          runtime: python310
+          kms_key_name: ${{ env.KMS_KEY_NAME }}
+          docker_repository: ${{ env.DOCKER_REPOSITORY }}
+          timeout: 300
+          max_instances: 10
+          memory_mb: 1024
+
+      - name: ishare-read-enps-results-effectory-blob
+        if: contains(env.filtered_files_without_tests, 'ishare-read-enps-results-effectory-blob/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+         name: ishare-read-enps-results-effectory-blob
+         project_id: '${{ env.PROJECT_ID }}'
+         region: ${{ env.CF_REGION }}
+         source_dir: ./ishare-read-enps-results-effectory-blob
+         service_account_email: ${{ env.SA_EMAIL }}
+         entry_point: main
+         env_vars: ${{ env.ISHARE_ENPS_RESULTS_BLOB }}
+         kms_key_name: ${{ env.KMS_KEY_NAME }}
+         docker_repository: ${{ env.DOCKER_REPOSITORY }}
+         timeout: 300
+         max_instances: 10
+         memory_mb: 4096
+
+      - name: ishare-read-excel-save-bq
+        if: contains(env.filtered_files_without_tests, 'ishare-read-excel-save-bq/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+         name: ishare-read-excel-save-bq
+         project_id: '${{ env.PROJECT_ID }}'
+         region: ${{ env.CF_REGION }}
+         source_dir: ./ishare-read-excel-save-bq
+         service_account_email: ${{ env.SA_EMAIL }}
+         entry_point: main
+         env_vars: ${{ env.ISHARE_READ_EXCEL_SAVE_BQ_VARS }}
+         kms_key_name: ${{ env.KMS_KEY_NAME }}
+         docker_repository: ${{ env.DOCKER_REPOSITORY }}
+         timeout: 300
+         max_instances: 10
+         memory_mb: 4096
+
+      - name: paom-set-record-status
+        if: contains(env.filtered_files_without_tests, 'paom-set-record-status/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+         name: paom-set-record-status
+         project_id: '${{ env.PROJECT_ID }}'
+         region: ${{ env.CF_REGION }}
+         source_dir: ./paom-set-record-status
+         service_account_email: ${{ env.SA_EMAIL }}
+         entry_point: main
+         runtime: python310
+         kms_key_name: ${{ env.KMS_KEY_NAME }}
+         docker_repository: ${{ env.DOCKER_REPOSITORY }}
+         timeout: 540
+         max_instances: 10
+         memory_mb: 8192
+
+      - name: scramble_bq_table_data
+        if: contains(env.filtered_files_without_tests, 'scramble_bq_table_data/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+          name: scramble_bq_table_data
+          project_id: '${{ env.PROJECT_ID }}'
+          region: ${{ env.CF_REGION }}
+          source_dir: ./scramble_bq_table_data
+          service_account_email: ${{ env.SA_EMAIL }}
+          entry_point: main
+          runtime: python310
+          kms_key_name: ${{ env.KMS_KEY_NAME }}
+          docker_repository: ${{ env.DOCKER_REPOSITORY }}
+          timeout: 540
+          max_instances: 100
+          memory_mb: 4096
+
+      - run: |
+           echo "end of checkout action"
