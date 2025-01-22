@@ -1,0 +1,33 @@
+name: GCP Authentication with Workload Identity Pool
+
+on:
+  push:
+    branches:
+      - develop
+
+  pull_request:
+    branches:
+      - develop
+      - test
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Authenticate to GCP using Workload Identity Pool
+      id: auth
+      uses: google-github-actions/auth@v0
+      with:
+        workload_identity_provider: projects/${{ secrets.PROJECT_ID }}/locations/global/workloadIdentityPools/cowr-dev-cicd-identity-pool/providers/cowr-cicd-dev-provider
+        service_account: ${{ secrets.SA_EMAIL }}
+        audience: //iam.googleapis.com/projects/${{ secrets.PROJECT_ID }}/locations/global/workloadIdentityPools/cowr-dev-cicd-identity-pool
+    
+    - name: Test GCP connection
+      run: |
+        gcloud auth list
+        gcloud config list
