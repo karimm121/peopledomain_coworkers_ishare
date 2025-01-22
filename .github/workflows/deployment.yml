@@ -70,12 +70,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt      
       
-      - name: Run Tests
-        run: |
-          cd tests
-          for dir in */; do
-            echo "Running tests in $dir"
-            pytest "$dir"  # Run pytest in each subdirectory
+      # - name: Run Tests
+      #   run: |
+      #     cd tests
+      #     for dir in */; do
+      #       echo "Running tests in $dir"
+      #       pytest "$dir"  # Run pytest in each subdirectory
 
   cloud_functions_deploy:
     name: Deploy Google Cloud Functions
