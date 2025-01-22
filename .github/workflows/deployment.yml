@@ -67,8 +67,7 @@ jobs:
       - name: Install dependencies
         run: |
           pwd
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt      
+          python -m pip install --upgrade pip     
       
       # - name: Run Tests
       #   run: |
@@ -257,9 +256,9 @@ jobs:
         with:
          name: get-cowr-data-person-api-v0
          project_id: 293169188558
-         region: europe-west1
+         region: "europe-west1"
          source_dir: ./get-cowr-data-person-api-v0
-         service_account_email: ishare-dev-service-account@steam-ego-445907-q3.iam.gserviceaccount.com
+         service_account_email: "ishare-dev-service-account@steam-ego-445907-q3.iam.gserviceaccount.com"
          entry_point: main
          runtime: python310
          timeout: 540
