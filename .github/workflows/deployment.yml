@@ -251,23 +251,23 @@ jobs:
           max_instances: 20
           memory_mb: 4096  
 
-      # - name: get-cowr-data-person-api-v0
-      #   if: contains(env.filtered_files_without_tests, 'get-cowr-data-person-api-v0/') && (steps.environment_check.outputs.environment == 'valid_deployment')
-      #   uses: google-github-actions/deploy-cloud-functions@v1
-      #   with:
-      #    name: get-cowr-data-person-api-v0
-      #    project_id: '${{ env.PROJECT_ID }}'
-      #    region: ${{ env.CF_REGION }}
-      #    source_dir: ./get-cowr-data-person-api-v0
-      #    service_account_email: ${{ env.SA_EMAIL }}
-      #    entry_point: main
-      #    runtime: python310
-      #    #env_vars: ${{ env.ISHARE_CONSUMER_LOGIC_VARS }}
-      #    kms_key_name: ${{ env.KMS_KEY_NAME }}
-      #    docker_repository: ${{ env.DOCKER_REPOSITORY }}
-      #    timeout: 540
-      #    max_instances: 10
-      #    memory_mb: 8192
+      - name: get-cowr-data-person-api-v0
+        if: contains(env.filtered_files_without_tests, 'get-cowr-data-person-api-v0/') && (steps.environment_check.outputs.environment == 'valid_deployment')
+        uses: google-github-actions/deploy-cloud-functions@v1
+        with:
+         name: get-cowr-data-person-api-v0
+         project_id: '${{ env.PROJECT_ID }}'
+         region: ${{ env.CF_REGION }}
+         source_dir: ./get-cowr-data-person-api-v0
+         service_account_email: ${{ env.SA_EMAIL }}
+         entry_point: main
+         runtime: python310
+         #env_vars: ${{ env.ISHARE_CONSUMER_LOGIC_VARS }}
+         kms_key_name: ${{ env.KMS_KEY_NAME }}
+         docker_repository: ${{ env.DOCKER_REPOSITORY }}
+         timeout: 540
+         max_instances: 10
+         memory_mb: 8192
 
       - name: get-shp-offboarding-list-bq
         if: contains(env.filtered_files_without_tests, 'get-shp-offboarding-list-bq/') && (steps.environment_check.outputs.environment == 'valid_deployment')
