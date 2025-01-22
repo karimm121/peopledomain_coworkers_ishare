@@ -256,15 +256,12 @@ jobs:
         uses: google-github-actions/deploy-cloud-functions@v1
         with:
          name: get-cowr-data-person-api-v0
-         project_id: '${{ env.PROJECT_ID }}'
-         region: ${{ env.CF_REGION }}
+         project_id: 293169188558
+         region: europe-west1
          source_dir: ./get-cowr-data-person-api-v0
-         service_account_email: ${{ env.SA_EMAIL }}
+         service_account_email: ishare-dev-service-account@steam-ego-445907-q3.iam.gserviceaccount.com
          entry_point: main
          runtime: python310
-         #env_vars: ${{ env.ISHARE_CONSUMER_LOGIC_VARS }}
-         kms_key_name: ${{ env.KMS_KEY_NAME }}
-         docker_repository: ${{ env.DOCKER_REPOSITORY }}
          timeout: 540
          max_instances: 10
          memory_mb: 8192
