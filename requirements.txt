@@ -1,5 +1,3 @@
-better_profanity
-fsspec
 functions-framework==3.*
 gcsfs
 google-auth
@@ -14,11 +12,7 @@ numpy
 openpyxl
 pandas
 pandas-gbq
-pandarallel
 paramiko
 pytest
 python-dotenv
-python-gnupg
 requests
-spacy==3.7.0
-stanza==1.7.0
