@@ -5,6 +5,7 @@ from vars import PAOM_TABLE_ASIS, RECORDS_LIMIT, DATASET, MISSING_KEY_ATT_DATA
 import pandas as pd
 from utils import write_db_table, replace_nan_to_null
 
+
 #----------------Edit:17/06/2024----------------
 def fetch_missing_data(df):
     columns = ['emailId', 'costCentre', 'managerEmployeeId', 'managerUid',
