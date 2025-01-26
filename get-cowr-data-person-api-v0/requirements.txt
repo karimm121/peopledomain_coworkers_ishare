@@ -1,0 +1,17 @@
+pandas-gbq
+google-cloud-secret-manager
+google-cloud-storage
+google-cloud-bigquery
+requests
+pandas==1.5.0
+numpy
+python-dotenv
+openpyxl
+loguru
+functions-framework==3.*
+pandarallel
+google-cloud-logging
+# db-dtypes
+# google-cloud-bigquery==3.12.0
+# memory_profiler
+# tracemalloc
