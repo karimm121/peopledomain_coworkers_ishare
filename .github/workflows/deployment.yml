@@ -1,0 +1,112 @@
+name: CFs Deployment
+on:
+  push:
+    branches:
+      - develop
+
+  pull_request:
+    branches:
+      - develop
+      - test
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  init:
+    name: Initialize Environment
+    runs-on: ubuntu-latest
+    outputs:
+      workflow_env: ${{ steps.set_environment.outputs.workflow_env }}
+    steps:
+      - id: 'set_environment'
+        name: Set Environment
+        run: |
+            if [[ "${{github.base_ref}}" == "main" || "${{github.ref}}" == "refs/heads/main" ]]; then
+              echo "workflow_env=main" >> $GITHUB_OUTPUT;
+            elif [[ "${{github.base_ref}}" == "test" || "${{github.ref}}" == "refs/heads/test" ]]; then
+              echo "workflow_env=test" >> $GITHUB_OUTPUT;
+            elif [[ "${{github.base_ref}}" == "develop" || "${{github.ref}}" == "refs/heads/develop" ]]; then
+              echo "workflow_env=develop" >> $GITHUB_OUTPUT;
+            else
+              echo "workflow_env=dev" >> $GITHUB_OUTPUT;
+            fi;
+
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          pwd
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt      
+      
+      - name: Run Tests
+        run: |
+          cd tests
+          for dir in */; do
+            echo "Running tests in $dir"
+            pytest "$dir"  # Run pytest in each subdirectory
+          done
+
+  cloud_functions_deploy:
+    name: Deploy Google Cloud Functions
+    runs-on: ubuntu-latest
+    needs: init
+    environment: ${{ needs.init.outputs.workflow_env }}
+    permissions:
+      contents: "read"
+      id-token: "write"
+      
+    steps:
+    # checkout to our repository so we have access to the source code
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+           fetch-depth: 0
+
+      - name: Branch name
+        run: echo running on branch ${GITHUB_REF##*/}
+        
+      - name: Get changed files
+        id: modified-files
+        uses: tj-actions/changed-files@v41
+        with:
+          format: newline-delimited
+      
+      - name: List modified files excluding tests
+        run: |
+          echo "Modified files (excluding tests):"
+          filtered_files=""
+          for file in ${{ steps.modified-files.outputs.all_modified_files }}; do
+            if [[ ! "$file" == tests/* ]]; then
+              filtered_files+="$file"$'\n'
+              echo "$file"
+            fi
+          done
+          echo "filtered_files_without_tests=${filtered_files//$'\n'/,}" >> $GITHUB_ENV
+
+      - name: Set deployment environment status
+        id: environment_check
+        run: |
+              if [[ "${{ github.event.pull_request.base.ref }}" == "develop" ]]; then
+                echo "PR is targeting the development environment"
+                echo "::set-output name=environment::valid_deployemnt"  
+              elif [[ "${{ github.event.pull_request.base.ref }}" == "test" && "${{ github.event.pull_request.head.ref }}" == "develop" ]]; then
+                echo "PR is targeting the test environment"
+                echo "::set-output name=environment::valid_deployemnt"
+              elif [[ "${{ github.event.pull_request.base.ref }}" == "main" && "${{ github.event.pull_request.head.ref }}" == "test" ]]; then
+                echo "PR is targeting the test environment"
+                echo "::set-output name=environment::valid_deployemnt"
+              else
+                echo "PR is targeting another environment"
+                echo "::set-output name=environment::other"
+              fi
+        
+      - name: Echo Environment
+        run: |
+            environment_status="${{ steps.environment_check.outputs.environment }}"
+            echo "Pull Request is targeting the $environment_status environment"
