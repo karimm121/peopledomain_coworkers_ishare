@@ -15,7 +15,6 @@ import warnings
 import pandas as pd
 # from customLogger import getlogger
 from loguru import logger
-
 from vars import OFFBOARDING_LIST_VIEW,PAOM_TABLE,DATASET#,config
 from utils import project_id, refine_asis_dataframe, austria_changes,add_empty_columns_to_person_dataframe,us_changes
 from utils import time_decorator, get_country_retail_managers, get_managers, load_table_to_dataframe, write_db_table
