@@ -10,7 +10,7 @@ on:
     branches:
       - main
       - develop
-      - test      
+      - test
 
 jobs:
   sonarqube:
@@ -30,13 +30,14 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
+      # ✅ Step 1: Check if SonarCloud project exists and create if missing
       - name: Ensure SonarCloud Project Exists
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -u "${{ secrets.SONAR_TOKEN }}:" \
+          PROJECT_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -u "${{ secrets.SONAR_TOKEN }}:" \
             "https://sonarcloud.io/api/projects/search?organization=${{ secrets.SONAR_ORG }}&projects=${{ github.repository }}")
 
-          if [ "$RESPONSE" -ne 200 ]; then
-            echo "Project does not exist. Creating..."
+          if [ "$PROJECT_RESPONSE" -ne 200 ]; then
+            echo "🚀 Project does not exist. Creating..."
             curl -X POST "https://sonarcloud.io/api/projects/create" \
               -H "Authorization: Bearer ${{ secrets.SONAR_TOKEN }}" \
               -d "organization=${{ secrets.SONAR_ORG }}" \
@@ -44,15 +45,37 @@ jobs:
               -d "name=${{ github.repository }}" \
               -d "visibility=private"
 
-            echo "Setting default branch..."
+            echo "✅ Project created. Setting default branch..."
+            sleep 5  # Allow SonarCloud to process project creation
+            
             curl -X POST "https://sonarcloud.io/api/project_branches/set_default" \
               -H "Authorization: Bearer ${{ secrets.SONAR_TOKEN }}" \
               -d "project=${{ github.repository }}" \
               -d "branch=main"
           else
-            echo "Project already exists. Proceeding..."
+            echo "✅ Project already exists. Proceeding..."
           fi
 
+      # ✅ Step 2: Ensure Default Branch Exists in SonarCloud
+      - name: Ensure Default Branch Exists in SonarCloud
+        run: |
+          BRANCHES_RESPONSE=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+            "https://sonarcloud.io/api/project_branches/list?project=${{ github.repository }}")
+
+          if ! echo "$BRANCHES_RESPONSE" | grep -q '"branches":\[\]'; then
+            echo "✅ Branches found in SonarCloud. Proceeding..."
+          else
+            echo "⚠️ No branches found in SonarCloud. Pushing a dummy commit..."
+            git config --global user.email "github-actions@github.com"
+            git config --global user.name "GitHub Actions"
+            echo "# SonarCloud Branch Initialization" >> sonarcloud_init.txt
+            git add sonarcloud_init.txt
+            git commit -m "Initialize SonarCloud default branch"
+            git push origin main
+            sleep 10  # Allow SonarCloud to recognize the branch
+          fi
+
+      # ✅ Step 3: Run SonarQube Scan
       - name: Run SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
