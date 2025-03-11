@@ -30,8 +30,14 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
-      - name: Run Tests and Generate Coverage Report
-        run: pytest --cov=. --cov-report=xml
+      - name: Create SonarCloud Project (if not exists)
+        run: |
+          curl -X POST "https://sonarcloud.io/api/projects/create" \
+          -H "Authorization: Bearer ${{ secrets.SONAR_TOKEN }}" \
+          -d "organization=$karimm121   \
+          -d "project=${{ github.repository }}" \
+          -d "name=${{ github.repository }}" \
+          -d "visibility=private"
 
       - name: Run SonarQube Scan
         env:
