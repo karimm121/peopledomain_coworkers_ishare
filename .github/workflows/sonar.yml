@@ -30,21 +30,35 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
-      - name: Create SonarCloud Project (if not exists)
+      - name: Ensure SonarCloud Project Exists
         run: |
-          curl -X POST "https://sonarcloud.io/api/projects/create" \
-          -H "Authorization: Bearer ${{ secrets.SONAR_TOKEN }}" \
-          -d "organization=$karimm121"   \
-          -d "project=${{ github.repository }}" \
-          -d "name=${{ github.repository }}" \
-          -d "visibility=private"
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -u "${{ secrets.SONAR_TOKEN }}:" \
+            "https://sonarcloud.io/api/projects/search?organization=${{ secrets.SONAR_ORG }}&projects=${{ github.repository }}")
+
+          if [ "$RESPONSE" -ne 200 ]; then
+            echo "Project does not exist. Creating..."
+            curl -X POST "https://sonarcloud.io/api/projects/create" \
+              -H "Authorization: Bearer ${{ secrets.SONAR_TOKEN }}" \
+              -d "organization=${{ secrets.SONAR_ORG }}" \
+              -d "project=${{ github.repository }}" \
+              -d "name=${{ github.repository }}" \
+              -d "visibility=private"
+          else
+            echo "Project already exists. Proceeding..."
+          fi
 
       - name: Run SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_HOST_URL: https://sonarcloud.io
+          SONAR_PROJECT_KEY: "${{ github.repository }}"
+          SONAR_ORG: "${{ secrets.SONAR_ORG }}"
         run: |
           curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
           unzip sonar-scanner.zip
           export PATH="$PWD/sonar-scanner-5.0.1.3006-linux/bin:$PATH"
-          sonar-scanner -Dsonar.login=$SONAR_TOKEN -Dsonar.host.url=$SONAR_HOST_URL
+          sonar-scanner -Dsonar.projectKey=$SONAR_PROJECT_KEY \
+                        -Dsonar.organization=$SONAR_ORG \
+                        -Dsonar.host.url=$SONAR_HOST_URL \
+                        -Dsonar.login=$SONAR_TOKEN \
+                        -Dsonar.branch.name=${{ github.ref_name }}
