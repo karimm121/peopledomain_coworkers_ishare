@@ -26,6 +26,48 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
+      # ✅ Check if the SonarCloud project exists
+      - name: Check if SonarCloud project exists
+        id: check_project
+        run: |
+          RESPONSE=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" "https://sonarcloud.io/api/projects/search?organization=karimm121")
+          if echo "$RESPONSE" | grep -q '"key":"peopledomain_coworkers_ishare"'; then
+            echo "Project exists"
+            echo "EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "Project does not exist"
+            echo "EXISTS=false" >> $GITHUB_ENV
+          fi
+
+      # ✅ Create project if it does not exist
+      - name: Create SonarCloud project (if missing)
+        if: env.EXISTS == 'false'
+        run: |
+          curl -X POST "https://sonarcloud.io/api/projects/create" \
+            -u "${{ secrets.SONAR_TOKEN }}:" \
+            -d "name=peopledomain_coworkers_ishare" \
+            -d "project=peopledomain_coworkers_ishare" \
+            -d "organization=karimm121" \
+            -d "visibility=private"
+
+      # ✅ Ensure main branch exists in SonarCloud
+      - name: Ensure main branch exists in SonarCloud
+        run: |
+          DEFAULT_BRANCH=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+            "https://sonarcloud.io/api/project_branches/list?project=peopledomain_coworkers_ishare" | jq -r '.branches[] | select(.isMain == true) | .name')
+
+          if [ -z "$DEFAULT_BRANCH" ] || [ "$DEFAULT_BRANCH" == "null" ]; then
+            echo "⚠️ No default branch found. Setting 'main' as default..."
+            curl -X POST "https://sonarcloud.io/api/project_branches/rename" \
+              -u "${{ secrets.SONAR_TOKEN }}:" \
+              -d "project=peopledomain_coworkers_ishare" \
+              -d "name=main" \
+              -d "branch=master"
+            sleep 5  # Allow SonarCloud to process the change
+          else
+            echo "✅ Default branch is already set to '$DEFAULT_BRANCH'. Proceeding..."
+          fi
+
       - name: Run Tests and Generate Coverage Report
         run: pytest --cov=. --cov-report=xml
 
