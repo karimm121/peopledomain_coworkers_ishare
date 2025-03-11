@@ -43,6 +43,12 @@ jobs:
               -d "project=${{ github.repository }}" \
               -d "name=${{ github.repository }}" \
               -d "visibility=private"
+
+            echo "Setting default branch..."
+            curl -X POST "https://sonarcloud.io/api/project_branches/set_default" \
+              -H "Authorization: Bearer ${{ secrets.SONAR_TOKEN }}" \
+              -d "project=${{ github.repository }}" \
+              -d "branch=main"
           else
             echo "Project already exists. Proceeding..."
           fi
@@ -61,4 +67,4 @@ jobs:
                         -Dsonar.organization=$SONAR_ORG \
                         -Dsonar.host.url=$SONAR_HOST_URL \
                         -Dsonar.login=$SONAR_TOKEN \
-                        -Dsonar.branch.name=${{ github.ref_name }}
+                        -Dsonar.branch.name=${{ github.ref_name || 'main' }}
