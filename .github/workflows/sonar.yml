@@ -48,13 +48,32 @@ jobs:
             echo "✅ Project already exists. Proceeding..."
           fi
 
-      # ✅ Step 2: Explicitly Set the Default Branch in SonarCloud
+      # ✅ Step 2: Ensure At Least One Branch Exists in SonarCloud
+      - name: Ensure a Branch Exists in SonarCloud
+        run: |
+          BRANCHES_RESPONSE=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+            "https://sonarcloud.io/api/project_branches/list?project=${{ github.repository }}")
+
+          if [[ "$BRANCHES_RESPONSE" == *'"branches":[]'* ]]; then
+            echo "⚠️ No branches found in SonarCloud. Pushing a dummy commit..."
+            git config --global user.email "github-actions@github.com"
+            git config --global user.name "GitHub Actions"
+            echo "# SonarCloud Branch Initialization" >> sonarcloud_init.txt
+            git add sonarcloud_init.txt
+            git commit -m "Initialize SonarCloud default branch"
+            git push origin main
+            sleep 10  # Allow SonarCloud to recognize the branch
+          else
+            echo "✅ Branches found in SonarCloud. Proceeding..."
+          fi
+
+      # ✅ Step 3: Explicitly Set the Default Branch in SonarCloud
       - name: Ensure Default Branch is Set in SonarCloud
         run: |
-          DEFAULT_BRANCH_RESPONSE=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+          DEFAULT_BRANCH=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
             "https://sonarcloud.io/api/project_branches/list?project=${{ github.repository }}" | jq -r '.branches[] | select(.isMain == true) | .name')
 
-          if [ -z "$DEFAULT_BRANCH_RESPONSE" ]; then
+          if [ -z "$DEFAULT_BRANCH" ] || [ "$DEFAULT_BRANCH" == "null" ]; then
             echo "⚠️ No default branch found. Setting 'main' as default..."
             curl -X POST "https://sonarcloud.io/api/project_branches/set_default" \
               -H "Authorization: Bearer ${{ secrets.SONAR_TOKEN }}" \
@@ -62,10 +81,10 @@ jobs:
               -d "branch=main"
             sleep 5  # Allow SonarCloud to process the change
           else
-            echo "✅ Default branch already set to '$DEFAULT_BRANCH_RESPONSE'. Proceeding..."
+            echo "✅ Default branch already set to '$DEFAULT_BRANCH'. Proceeding..."
           fi
 
-      # ✅ Step 3: Run SonarQube Scan
+      # ✅ Step 4: Run SonarQube Scan
       - name: Run SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
