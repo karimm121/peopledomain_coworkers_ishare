@@ -69,11 +69,11 @@ jobs:
            fetch-depth: 0
 
       - name: Branch name
-        run: echo running on branch ${GITHUB_REF##*/}
+        run: echo "running on branch ${{ github.ref }}"
         
       - name: Get changed files
         id: modified-files
-        uses: tj-actions/changed-files@v41
+        uses: tj-actions/changed-files@v46.0.1
         with:
           format: newline-delimited
       
@@ -110,3 +110,8 @@ jobs:
         run: |
             environment_status="${{ steps.environment_check.outputs.environment }}"
             echo "Pull Request is targeting the $environment_status environment"
+
+      - name: get-cowr-data-person-api-v0
+        if: contains(env.filtered_files_without_tests, 'get-cowr-data-person-api-v0/') && (steps.environment_check.outputs.environment == 'valid_deployemnt')
+        run: |
+          echo "Deploying the functions get-cowr-data-person-api-v0"
