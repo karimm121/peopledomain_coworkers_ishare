@@ -2,11 +2,14 @@ name: CFs Deployment
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    # For the develop branch, trigger on PR creation and update, but NOT on close
+    types: [opened, synchronize]  
     branches:
-      - develop
-  
+      - develop  # Trigger on develop PRs
+
+  # For test and main branches, trigger only when PR is merged (push event)
   push:
+    # Trigger when the PR is merged to test or main
     branches:
       - test
       - main
@@ -110,19 +113,37 @@ jobs:
       - name: Set deployment environment status
         id: environment_check
         run: |
-              if [[ "${{ github.event.pull_request.base.ref }}" == "develop" ]]; then
-                echo "PR is targeting the development environment"
-                echo "environment=valid_deployment" >> $GITHUB_ENV  
-              elif [[ "${{ github.event.pull_request.base.ref }}" == "test" && "${{ github.event.pull_request.head.ref }}" == "develop" ]]; then
-                echo "PR is targeting the test environment"
-                echo "environment=valid_deployment" >> $GITHUB_ENV
-              elif [[ "${{ github.event.pull_request.base.ref }}" == "main" && "${{ github.event.pull_request.head.ref }}" == "test" ]]; then
-                echo "PR is targeting the main environment"
-                echo "environment=valid_deployment" >> $GITHUB_ENV
-              else
-                echo "PR is targeting another environment"
-                echo "environment=other" >> $GITHUB_ENV
-              fi
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # PR event logic
+            if [[ "${{ github.event.pull_request.base.ref }}" == "develop" ]]; then
+              echo "PR is targeting the development environment"
+              echo "environment=valid_deployment" >> $GITHUB_ENV  
+            elif [[ "${{ github.event.pull_request.base.ref }}" == "test" && "${{ github.event.pull_request.head.ref }}" == "develop" ]]; then
+              echo "PR is targeting the test environment"
+              echo "environment=valid_deployment" >> $GITHUB_ENV
+            elif [[ "${{ github.event.pull_request.base.ref }}" == "main" && "${{ github.event.pull_request.head.ref }}" == "test" ]]; then
+              echo "PR is targeting the main environment"
+              echo "environment=valid_deployment" >> $GITHUB_ENV
+            else
+              echo "PR is targeting another environment"
+              echo "environment=other" >> $GITHUB_ENV
+            fi
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            # Push event logic (after PR merge)
+            if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+              echo "Push to develop branch"
+              echo "environment=valid_deployment" >> $GITHUB_ENV
+            elif [[ "${{ github.ref }}" == "refs/heads/test" ]]; then
+              echo "Push to test branch"
+              echo "environment=valid_deployment" >> $GITHUB_ENV
+            elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              echo "Push to main branch"
+              echo "environment=valid_deployment" >> $GITHUB_ENV
+            else
+              echo "Push to an unknown branch"
+              echo "environment=other" >> $GITHUB_ENV
+            fi
+          fi
 
       - name: Echo Environment
         run: |
