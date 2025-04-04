@@ -2,7 +2,7 @@ name: CFs Deployment
 
 on:
   pull_request:
-    types: [opened, synchronize, closed]
+    types: [opened, synchronize]
     branches:
       - develop
   
@@ -24,15 +24,29 @@ jobs:
       - id: 'set_environment'
         name: Set Environment
         run: |
-            if [[ "${{github.base_ref}}" == "main" || "${{github.ref}}" == "refs/heads/main" ]]; then
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # For PRs, set the environment based on the base branch (the target branch)
+            if [[ "${{ github.base_ref }}" == "main" || "${{ github.ref }}" == "refs/heads/main" ]]; then
               echo "workflow_env=main" >> $GITHUB_OUTPUT;
-            elif [[ "${{github.base_ref}}" == "test" || "${{github.ref}}" == "refs/heads/test" ]]; then
+            elif [[ "${{ github.base_ref }}" == "test" || "${{ github.ref }}" == "refs/heads/test" ]]; then
               echo "workflow_env=test" >> $GITHUB_OUTPUT;
-            elif [[ "${{github.base_ref}}" == "develop" || "${{github.ref}}" == "refs/heads/develop" ]]; then
+            elif [[ "${{ github.base_ref }}" == "develop" || "${{ github.ref }}" == "refs/heads/develop" ]]; then
               echo "workflow_env=develop" >> $GITHUB_OUTPUT;
             else
               echo "workflow_env=dev" >> $GITHUB_OUTPUT;
             fi;
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            # For pushes (after PR merge), use github.ref to determine the branch
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              echo "workflow_env=main" >> $GITHUB_OUTPUT;
+            elif [[ "${{ github.ref }}" == "refs/heads/test" ]]; then
+              echo "workflow_env=test" >> $GITHUB_OUTPUT;
+            elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+              echo "workflow_env=develop" >> $GITHUB_OUTPUT;
+            else
+              echo "workflow_env=dev" >> $GITHUB_OUTPUT;
+            fi;
+          fi;
 
       - name: Checkout
         uses: actions/checkout@v3
@@ -43,8 +57,8 @@ jobs:
         run: |
           pwd
           python -m pip install --upgrade pip
-          pip install -r requirements.txt      
-      
+          pip install -r requirements.txt
+
       - name: Run Tests
         run: |
           cd tests
@@ -61,16 +75,14 @@ jobs:
     permissions:
       contents: "read"
       id-token: "write"
-    
-    # For develop: Trigger on PR creation, update, or merge
+    # For develop: Trigger on PR creation and update (NOT closed)
     if: |
-      github.event.pull_request.base.ref == 'develop' ||
-      (github.event.pull_request.merged == true && (
+      (github.event_name == 'pull_request' && github.event.pull_request.state != 'closed' && github.event.pull_request.base.ref == 'develop') ||
+      (github.event_name == 'push' && (
         github.ref == 'refs/heads/test' || github.ref == 'refs/heads/main'
       ))
 
     steps:
-    # checkout to our repository so we have access to the source code
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -78,11 +90,11 @@ jobs:
 
       - name: Branch name
         run: echo "running on branch ${{ github.ref }}"
-        
+
       - name: Get changed files
         id: modified-files
         uses: tj-actions/changed-files@v46.0.1
-      
+
       - name: List modified files excluding tests
         run: |
           echo "Modified files (excluding tests):"
