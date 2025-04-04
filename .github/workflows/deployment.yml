@@ -73,9 +73,7 @@ jobs:
         
       - name: Get changed files
         id: modified-files
-        uses: tj-actions/changed-files@v46.0.1
-        with:
-          format: newline-delimited
+        uses: tj-actions/changed-files@latest
       
       - name: List modified files excluding tests
         run: |
