@@ -2,7 +2,7 @@ name: CFs Deployment
 
 on:
   pull_request:
-    types: types: [opened, synchronize, closed]
+    types: [opened, synchronize, closed]
     branches:
       - develop
       - test
