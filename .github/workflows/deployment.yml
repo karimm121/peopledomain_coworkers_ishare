@@ -5,6 +5,9 @@ on:
     types: [opened, synchronize, closed]
     branches:
       - develop
+  
+  push:
+    branches:
       - test
       - main
 
