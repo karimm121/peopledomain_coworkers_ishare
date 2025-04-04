@@ -1,12 +1,13 @@
 name: CFs Deployment
+
 on:
+  pull_request:
+    types: [opened, synchronize, closed]
+    branches:
+      - develop
+  
   push:
     branches:
-      - develop
-
-  pull_request:
-    branches:
-      - develop
       - test
       - main
 
@@ -60,7 +61,9 @@ jobs:
     permissions:
       contents: "read"
       id-token: "write"
-      
+    # Deploy to develop for any PR event targeting develop (even if it's not merged)
+    if: github.event.pull_request.base.ref == 'develop' || github.event.pull_request.merged == true
+
     steps:
     # checkout to our repository so we have access to the source code
       - name: Checkout
@@ -69,13 +72,11 @@ jobs:
            fetch-depth: 0
 
       - name: Branch name
-        run: echo running on branch ${GITHUB_REF##*/}
+        run: echo "running on branch ${{ github.ref }}"
         
       - name: Get changed files
         id: modified-files
-        uses: tj-actions/changed-files@v41
-        with:
-          format: newline-delimited
+        uses: tj-actions/changed-files@v46.0.1
       
       - name: List modified files excluding tests
         run: |
@@ -94,19 +95,24 @@ jobs:
         run: |
               if [[ "${{ github.event.pull_request.base.ref }}" == "develop" ]]; then
                 echo "PR is targeting the development environment"
-                echo "::set-output name=environment::valid_deployemnt"  
+                echo "environment=valid_deployment" >> $GITHUB_ENV  
               elif [[ "${{ github.event.pull_request.base.ref }}" == "test" && "${{ github.event.pull_request.head.ref }}" == "develop" ]]; then
                 echo "PR is targeting the test environment"
-                echo "::set-output name=environment::valid_deployemnt"
+                echo "environment=valid_deployment" >> $GITHUB_ENV
               elif [[ "${{ github.event.pull_request.base.ref }}" == "main" && "${{ github.event.pull_request.head.ref }}" == "test" ]]; then
-                echo "PR is targeting the test environment"
-                echo "::set-output name=environment::valid_deployemnt"
+                echo "PR is targeting the main environment"
+                echo "environment=valid_deployment" >> $GITHUB_ENV
               else
                 echo "PR is targeting another environment"
-                echo "::set-output name=environment::other"
+                echo "environment=other" >> $GITHUB_ENV
               fi
-        
+
       - name: Echo Environment
         run: |
-            environment_status="${{ steps.environment_check.outputs.environment }}"
+            environment_status="${{ env.environment }}"
             echo "Pull Request is targeting the $environment_status environment"
+
+      - name: get-cowr-data-person-api-v0
+        if: contains(env.filtered_files_without_tests, 'get-cowr-data-person-api-v0/') && (env.environment == 'valid_deployment')
+        run: |
+          echo "Deploying the functions get-cowr-data-person-api-v0"
