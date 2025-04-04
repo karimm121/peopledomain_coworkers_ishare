@@ -2,7 +2,7 @@ name: CFs Deployment
 
 on:
   pull_request:
-    types: [closed]  # Trigger the workflow when a PR is closed (merged or not)
+    types: types: [opened, synchronize, closed]
     branches:
       - develop
       - test
@@ -58,7 +58,8 @@ jobs:
     permissions:
       contents: "read"
       id-token: "write"
-    if: github.event.pull_request.merged == true  # Ensure deployment only happens after PR is merged
+    # Deploy to develop for any PR event targeting develop (even if it's not merged)
+    if: github.event.pull_request.base.ref == 'develop' || github.event.pull_request.merged == true
 
     steps:
     # checkout to our repository so we have access to the source code
