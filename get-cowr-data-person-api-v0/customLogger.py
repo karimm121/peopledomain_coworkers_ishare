@@ -4,7 +4,7 @@ import google.cloud.logging
 from google.cloud.logging.handlers import CloudLoggingHandler
 
 def getlogger():
-    # Instantiates a client
+    # Instantiates a clien
     client = google.cloud.logging.Client()
     handler = CloudLoggingHandler(client, name='module_logger_log')
     module_logger = logging.getLogger('module_logger')

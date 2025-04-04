@@ -16,7 +16,7 @@ COUNTRIES_FOR_DEPTNAME_WITH_CODE="PL"
 country_list = COUNTRIES_FOR_DEPTNAME_WITH_CODE.split(',')
 MISSING_KEY_ATT_DATA="Missing_Key_Att_Data"
 
-# Here all methods should be defined
+# Here all methods should be defineds
 org_unit_mapping =  {
                     'GF00006' : ['Group Functions','Group Global Operations'],
                     'IC00001' : ['Ingka Centres','Ingka Centres'],
