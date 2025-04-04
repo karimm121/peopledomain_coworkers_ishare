@@ -14,7 +14,7 @@ ALLOWED_EMAIL_DOMAINS="ikea.com,ingka.ikea.com,ingka.com"
 OFFBOARDING_LIST_VIEW="offboarding_list_data_view"
 COUNTRIES_FOR_DEPTNAME_WITH_CODE="PL"
 country_list = COUNTRIES_FOR_DEPTNAME_WITH_CODE.split(',')
-MISSING_KEY_ATT_DATA="Missing_Key_Att_Data"
+MISSING_KEY_ATT_DATA="Missing_Key_Att_Datas"
 
 # Here all methods should be definedsa
 org_unit_mapping =  {
