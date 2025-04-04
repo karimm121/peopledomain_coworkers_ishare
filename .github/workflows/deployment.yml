@@ -61,8 +61,13 @@ jobs:
     permissions:
       contents: "read"
       id-token: "write"
-    # Deploy to develop for any PR event targeting develop (even if it's not merged)
-    if: github.event.pull_request.base.ref == 'develop' || github.event.pull_request.merged == true
+    
+    # For develop: Trigger on PR creation, update, or merge
+    if: |
+      github.event.pull_request.base.ref == 'develop' ||
+      (github.event.pull_request.merged == true && (
+        github.ref == 'refs/heads/test' || github.ref == 'refs/heads/main'
+      ))
 
     steps:
     # checkout to our repository so we have access to the source code
