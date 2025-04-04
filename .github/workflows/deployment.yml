@@ -1,6 +1,8 @@
 name: CFs Deployment
+
 on:
   pull_request:
+    types: [closed]  # Trigger the workflow when a PR is closed (merged or not)
     branches:
       - develop
       - test
@@ -56,7 +58,8 @@ jobs:
     permissions:
       contents: "read"
       id-token: "write"
-      
+    if: github.event.pull_request.merged == true  # Ensure deployment only happens after PR is merged
+
     steps:
     # checkout to our repository so we have access to the source code
       - name: Checkout
@@ -99,7 +102,7 @@ jobs:
                 echo "PR is targeting another environment"
                 echo "environment=other" >> $GITHUB_ENV
               fi
-        
+
       - name: Echo Environment
         run: |
             environment_status="${{ env.environment }}"
